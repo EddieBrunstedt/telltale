@@ -4,6 +4,7 @@ pub mod disk;
 pub mod mem;
 pub mod net;
 mod pace;
+pub mod units;
 
 use crate::reading::Reading;
 

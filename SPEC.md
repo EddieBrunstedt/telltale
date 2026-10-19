@@ -260,8 +260,11 @@ instantly, but it needs `zbus` (a large dependency tree), and systemd has no
 
 **Summary:** `󰀦 ` + count.
 
-**Levels:** quiet at 0, attention at 1 or more. Not critical: a failed unit
-can be anything, and the detail says which.
+**Levels:** quiet at 0, critical at 1 or more. A unit systemd restarts on
+failure never stays failed, so it never shows here; what does show is a unit
+systemd gave up on, which stays down until someone acts. In the 30 days to
+2026-10-19 waybar failed 62 times and forgejo-runner 25, all restarted; the
+only unit that stayed failed was ghostty (15 of 47 logins, since fixed).
 
 **Detail:**
 ```

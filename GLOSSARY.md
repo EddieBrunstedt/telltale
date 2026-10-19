@@ -44,7 +44,8 @@ The level of a reading you should deal with, but not urgently.
 _Avoid_: warning, warn
 
 **Critical**:
-The level of a reading you should deal with now.
+The level of a reading where something is broken, or about to break. Deal
+with it now.
 _Avoid_: crit, error, alarm
 
 **Unknown**:
