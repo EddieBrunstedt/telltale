@@ -13,7 +13,7 @@ use std::io::{self, Read, Write};
 use std::net::{IpAddr, TcpStream, ToSocketAddrs};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::CryptoProvider;
@@ -24,6 +24,7 @@ use rustls::{
 };
 
 use crate::gauge::Gauge;
+use crate::gauge::clock::{clock, now};
 use crate::reading::{Level, Reading};
 use crate::run::{Extra, Given};
 use imap::{COMMAND_TIMEOUT, Session, Transport};
@@ -423,27 +424,6 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let doy = (153 * mp + 2) / 5 + d - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146_097 + doe - 719_468
-}
-
-fn now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
-}
-
-/// `HH:MM` in local time. A clock time rather than an age: the detail is
-/// written once and read later, and "3 min ago" would go stale on screen.
-fn clock(epoch: i64) -> String {
-    let t = epoch as libc::time_t;
-    // SAFETY: localtime_r only writes the struct we hand it.
-    let tm = unsafe {
-        let mut tm: libc::tm = std::mem::zeroed();
-        if libc::localtime_r(&t, &mut tm).is_null() {
-            return "??:??".to_owned();
-        }
-        tm
-    };
-    format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
 }
 
 fn dial(host: &str, port: u16) -> io::Result<TcpStream> {

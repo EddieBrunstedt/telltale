@@ -328,7 +328,8 @@ Cannot measure since 19:04: imap://127.0.0.1:1143: Connection refused (os error 
 Last seen: 257 at 19:03
 ```
 Times are local clock times, not ages: the detail is written once and read
-later, and "3 min ago" would go stale on screen. A missing credential
+later, and "3 min ago" would go stale on screen. A time that is not today
+gets its date (`2026-10-17 16:15`). `units` does the same. A missing credential
 variable is an unknown reading (`$VAR is not set`), not a usage error, so it
 shows on a bar instead of the gauge silently exiting.
 

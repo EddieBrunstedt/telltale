@@ -6,9 +6,10 @@
 //! fine for something that waits until you get to it.
 
 use std::process::Command;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use crate::gauge::Gauge;
+use crate::gauge::clock::clock;
 use crate::gauge::pace::Pace;
 use crate::reading::{Level, Reading};
 
@@ -40,10 +41,7 @@ impl Gauge for Units {
             .map(failed_in)
             .collect::<Result<Vec<_>, _>>()
             .map(|scopes| scopes.into_iter().flatten().collect());
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
-        assess(failed, now)
+        assess(failed)
     }
 }
 
@@ -91,7 +89,7 @@ struct Failed {
     /// systemd's `Result`: why it failed (`exit-code`, `signal`, `protocol`…).
     result: Option<String>,
     /// Seconds since the epoch at which it entered the failed state.
-    since: Option<u64>,
+    since: Option<i64>,
 }
 
 fn failed_in(scope: Scope) -> Result<Vec<Failed>, String> {
@@ -147,7 +145,7 @@ fn parse_failed(json: &str) -> Result<Vec<String>, String> {
 /// `(Id, Result, StateChangeTimestamp)` per unit from `systemctl show
 /// --timestamp=unix`, which separates units with blank lines and does not
 /// keep the order the properties were asked in.
-fn parse_show(text: &str) -> Vec<(String, Option<String>, Option<u64>)> {
+fn parse_show(text: &str) -> Vec<(String, Option<String>, Option<i64>)> {
     text.split("\n\n")
         .filter_map(|block| {
             let get = |key: &str| {
@@ -168,7 +166,7 @@ fn parse_show(text: &str) -> Vec<(String, Option<String>, Option<u64>)> {
         .collect()
 }
 
-fn assess(failed: Result<Vec<Failed>, String>, now: u64) -> Reading {
+fn assess(failed: Result<Vec<Failed>, String>) -> Reading {
     let failed = match failed {
         Ok(f) => f,
         Err(why) => {
@@ -195,7 +193,7 @@ fn assess(failed: Result<Vec<Failed>, String>, now: u64) -> Reading {
         if failed.len() == 1 { "" } else { "s" }
     )];
     detail.extend(failed.iter().map(|f| {
-        let since = f.since.map(|t| ago(now.saturating_sub(t)));
+        let since = f.since.map(|t| format!("since {}", clock(t)));
         format!(
             "{:<6}  {:<unit_width$}  {:<result_width$}  {}",
             f.scope.name(),
@@ -221,19 +219,6 @@ fn summary(count: &str) -> String {
     format!("󰀦 {count}")
 }
 
-fn ago(secs: u64) -> String {
-    let (m, h, d) = (secs / 60, secs / 3600, secs / 86_400);
-    if secs < 60 {
-        format!("{secs} s ago")
-    } else if h == 0 {
-        format!("{m} min ago")
-    } else if d == 0 {
-        format!("{h} h {} min ago", m % 60)
-    } else {
-        format!("{d} d {} h ago", h % 24)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,9 +226,9 @@ mod tests {
     const FAILED: &str = include_str!("../../tests/fixtures/systemctl_failed.json");
     const SHOW: &str = include_str!("../../tests/fixtures/systemctl_show");
     /// When the fixtures' ghostty unit failed.
-    const FAILED_AT: u64 = 1_792_419_356;
+    const FAILED_AT: i64 = 1_792_419_356;
 
-    fn failed(scope: Scope, unit: &str, result: &str, since: u64) -> Failed {
+    fn failed(scope: Scope, unit: &str, result: &str, since: i64) -> Failed {
         Failed {
             scope,
             unit: unit.to_owned(),
@@ -294,58 +279,52 @@ mod tests {
 
     #[test]
     fn nothing_failed_is_quiet() {
-        let reading = assess(Ok(vec![]), FAILED_AT);
+        let reading = assess(Ok(vec![]));
         assert_eq!(reading.level, Level::Quiet);
         assert_eq!(reading.summary, summary(" 0"));
     }
 
     #[test]
     fn any_failure_is_critical_and_says_which_why_and_when() {
-        let reading = assess(
-            Ok(vec![
-                failed(
-                    Scope::User,
-                    "app-com.mitchellh.ghostty.service",
-                    "protocol",
-                    FAILED_AT,
-                ),
-                failed(
-                    Scope::System,
-                    "backup.service",
-                    "exit-code",
-                    FAILED_AT + 5_000,
-                ),
-            ]),
-            FAILED_AT + 9_060,
-        );
+        let reading = assess(Ok(vec![
+            failed(
+                Scope::User,
+                "app-com.mitchellh.ghostty.service",
+                "protocol",
+                FAILED_AT,
+            ),
+            failed(
+                Scope::System,
+                "backup.service",
+                "exit-code",
+                FAILED_AT + 5_000,
+            ),
+        ]));
         assert_eq!(reading.level, Level::Critical);
         assert_eq!(reading.summary, summary(" 2"));
         assert_eq!(
             reading.detail,
             [
-                "2 failed units",
-                "user    app-com.mitchellh.ghostty.service  protocol   2 h 31 min ago",
-                "system  backup.service                     exit-code  1 h 7 min ago",
+                "2 failed units".to_owned(),
+                format!(
+                    "user    app-com.mitchellh.ghostty.service  protocol   since {}",
+                    clock(FAILED_AT)
+                ),
+                format!(
+                    "system  backup.service                     exit-code  since {}",
+                    clock(FAILED_AT + 5_000)
+                ),
             ]
         );
     }
 
     #[test]
     fn a_failed_systemctl_is_unknown_and_the_same_width() {
-        let reading = assess(Err("systemctl --user: no bus".to_owned()), 0);
+        let reading = assess(Err("systemctl --user: no bus".to_owned()));
         assert_eq!(reading.level, Level::Unknown);
         assert_eq!(
             reading.summary.chars().count(),
-            assess(Ok(vec![]), 0).summary.chars().count()
+            assess(Ok(vec![])).summary.chars().count()
         );
-    }
-
-    #[test]
-    fn ages() {
-        assert_eq!(ago(42), "42 s ago");
-        assert_eq!(ago(60), "1 min ago");
-        assert_eq!(ago(3_599), "59 min ago");
-        assert_eq!(ago(3_600), "1 h 0 min ago");
-        assert_eq!(ago(90_000), "1 d 1 h ago");
     }
 }
