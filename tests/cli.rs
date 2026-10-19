@@ -7,6 +7,7 @@ use std::process::Command;
 const GAUGES: &[(&str, &str)] = &[
     (env!("CARGO_BIN_EXE_telltale-net"), "󰁅"),
     (env!("CARGO_BIN_EXE_telltale-mem"), "󰍛"),
+    (env!("CARGO_BIN_EXE_telltale-disk"), "󰋊"),
 ];
 
 fn run(exe: &str, args: &[&str]) -> (i32, String) {

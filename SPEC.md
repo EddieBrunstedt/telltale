@@ -237,7 +237,11 @@ Since boot: ↓ 21.4 GB  ↑ 3.2 GB
 (ext4/btrfs/xfs/vfat/exfat/f2fs/ntfs3), deduplicated by device. Today: `/`,
 `/boot`, `/data/shared`. `/boot` matters: a full ESP makes kernel updates
 fail. Used % is `statvfs` with the `df` definition,
-`(blocks − bfree) / (blocks − bfree + bavail)`. Every 60 s.
+`(blocks − bfree) / (blocks − bfree + bavail)`, rounded up as `df` rounds
+it, so the number always matches `df`'s `Use%`. Every 60 s. A device mounted
+twice (bind mounts, btrfs subvolumes) is listed once, under its shortest
+path. If any filesystem cannot be measured, the reading is unknown: "the
+fullest" is then not knowable.
 
 **Summary:** `󰋊 ` + `{:>3}%` of the fullest filesystem.
 
