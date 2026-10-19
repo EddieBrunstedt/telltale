@@ -1,0 +1,16 @@
+[package]
+name = "telltale"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Gauges that stay dark until something needs your attention"
+
+[dependencies]
+libc = "0.2"
+serde_json = "1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
