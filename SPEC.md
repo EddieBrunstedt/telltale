@@ -185,9 +185,12 @@ could be handed out without swapping. Every 2 s.
 
 **Detail:**
 ```
-Used 5.5 GiB of 31.2 GiB (available 25.5 GiB)
-Swap 0 B of 40.0 GiB
+Used 6.5 GiB of 31.2 GiB (available 24.7 GiB)
+Swap 0.0 GiB of 40.0 GiB
+Every task stalled on memory 0.00% of the last 10 s
 ```
+The level is judged on the same rounded percentage the summary shows, so
+`80%` is never shown in the colour of 79%.
 No per-app breakdown. The only per-app figure that adds up honestly is PSS
 (RSS counts shared pages in every process that maps them), and a PSS scan
 costs 66 ms of kernel time. That's a process monitor's job.

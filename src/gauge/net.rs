@@ -5,10 +5,10 @@
 //! on the wire. Tunnels are listed in the detail as payload.
 
 use std::fs;
-use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::gauge::Gauge;
+use crate::gauge::pace::Pace;
 use crate::reading::{Level, Reading};
 
 const WINDOW: Duration = Duration::from_secs(1);
@@ -31,7 +31,8 @@ pub struct Net {
     tunnels: Vec<String>,
     since_resolve: u32,
     prev: Option<Snapshot>,
-    deadline: Option<Instant>,
+    /// Ticks at window edges.
+    pace: Pace,
 }
 
 impl Net {
@@ -42,24 +43,8 @@ impl Net {
             tunnels: Vec::new(),
             since_resolve: RESOLVE_EVERY,
             prev: None,
-            deadline: None,
+            pace: Pace::every(WINDOW),
         }
-    }
-
-    /// Sleeps to the next window boundary. Boundaries stay on a fixed grid so
-    /// windows do not drift; after a long stall (suspend) the grid restarts.
-    fn wait(&mut self) {
-        let now = Instant::now();
-        let start = match self.deadline {
-            None => now,
-            Some(d) if d > now => {
-                thread::sleep(d - now);
-                d
-            }
-            Some(d) if now - d < WINDOW => d,
-            Some(_) => now,
-        };
-        self.deadline = Some(start + WINDOW);
     }
 
     fn resolve(&mut self) {
@@ -83,7 +68,7 @@ impl Gauge for Net {
     fn next(&mut self) -> Reading {
         let mut dropped = false;
         loop {
-            self.wait();
+            self.pace.wait();
             if self.since_resolve >= RESOLVE_EVERY {
                 self.resolve();
             }
