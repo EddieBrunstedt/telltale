@@ -36,14 +36,18 @@ impl Extra {
     };
 }
 
-/// The gauge's own options as given on the command line, in order.
+/// The gauge's own options as given on the command line, in order, and
+/// whether it is being watched.
 #[derive(Debug, Default, PartialEq)]
-pub struct Given(Vec<(String, Option<String>)>);
+pub struct Given {
+    flags: Vec<(String, Option<String>)>,
+    watch: bool,
+}
 
 impl Given {
     /// The value of the last occurrence of `flag`.
     pub fn value(&self, flag: &str) -> Option<&str> {
-        self.0
+        self.flags
             .iter()
             .rev()
             .find(|(f, _)| f == flag)
@@ -56,7 +60,13 @@ impl Given {
     }
 
     pub fn has(&self, flag: &str) -> bool {
-        self.0.iter().any(|(f, _)| f == flag)
+        self.flags.iter().any(|(f, _)| f == flag)
+    }
+
+    /// Whether this is a watch rather than a check, for a gauge whose detail
+    /// says how its readings are kept current.
+    pub fn watching(&self) -> bool {
+        self.watch
     }
 }
 
@@ -149,14 +159,15 @@ fn parse(
             _ => match extra.flags.iter().find(|(f, _)| *f == flag) {
                 Some((_, true)) => {
                     let v = value()?;
-                    given.0.push((flag, Some(v)));
+                    given.flags.push((flag, Some(v)));
                 }
-                Some((_, false)) if inline.is_none() => given.0.push((flag, None)),
+                Some((_, false)) if inline.is_none() => given.flags.push((flag, None)),
                 Some((_, false)) => return Err(format!("{flag} takes no value")),
                 None => return Err(format!("unknown argument '{flag}'")),
             },
         }
     }
+    given.watch = options.watch;
     Ok(Some((options, given)))
 }
 
@@ -280,12 +291,15 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(o.watch);
+        assert!(given.watching());
         assert_eq!(given.value("--server"), Some("imap://a"));
         assert!(given.has("--insecure"));
         assert_eq!(
             given.required("--mailbox"),
             Err("--mailbox is required".to_owned())
         );
+        let (_, given) = parse(args("--server=imap://a"), &EXTRA).unwrap().unwrap();
+        assert!(!given.watching());
         assert!(parse(args("--insecure=yes"), &EXTRA).is_err());
         assert!(parse(args("--server"), &EXTRA).is_err());
     }

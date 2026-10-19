@@ -135,6 +135,8 @@ pub struct Inbox {
     password_env: String,
     tls: Arc<ClientConfig>,
     session: Option<Session<Conn>>,
+    /// A check reads once; only a watch keeps its readings current.
+    watching: bool,
     /// Whether the server pushes changes; if not, it is polled.
     pushes: bool,
     connected_at: i64,
@@ -161,6 +163,7 @@ impl Inbox {
             user_env: given.required("--user-env")?.to_owned(),
             password_env: given.required("--password-env")?.to_owned(),
             session: None,
+            watching: given.watching(),
             pushes: false,
             connected_at: 0,
             last_seen: None,
@@ -269,6 +272,7 @@ impl Inbox {
             mailbox: self.mailbox.clone(),
             url: self.server.url(),
             since: self.connected_at,
+            watching: self.watching,
             pushes: self.pushes,
         }
     }
@@ -324,6 +328,7 @@ struct Situation {
     mailbox: String,
     url: String,
     since: i64,
+    watching: bool,
     pushes: bool,
 }
 
@@ -341,16 +346,20 @@ fn assess(counts: &Counts, situation: &Situation, now: i64) -> Reading {
             None => format!("Oldest arrived {first}"),
         });
     }
-    detail.push(format!(
-        "Connected to {} since {}; {}",
-        situation.url,
-        clock(situation.since),
-        if situation.pushes {
-            "the server pushes changes (IDLE)"
-        } else {
-            "checked every 60 s (the server has no IDLE)"
-        }
-    ));
+    detail.push(if situation.watching {
+        format!(
+            "Connected to {} since {}; {}",
+            situation.url,
+            clock(situation.since),
+            if situation.pushes {
+                "the server pushes changes (IDLE)"
+            } else {
+                "checked every 60 s (the server has no IDLE)"
+            }
+        )
+    } else {
+        format!("Read from {} at {}", situation.url, clock(situation.since))
+    });
     Reading {
         level: if counts.total == 0 {
             Level::Quiet
@@ -556,11 +565,13 @@ impl ServerCertVerifier for AnyCertificate {
 mod tests {
     use super::*;
 
+    /// A watch.
     fn situation(pushes: bool) -> Situation {
         Situation {
             mailbox: "INBOX".to_owned(),
             url: "imap://127.0.0.1:1143".to_owned(),
             since: 0,
+            watching: true,
             pushes,
         }
     }
@@ -645,6 +656,25 @@ mod tests {
         assert!(detail[2].ends_with("; the server pushes changes (IDLE)"));
         let polled = assess(&counts, &situation(false), two_days_later).detail;
         assert!(polled[2].ends_with("checked every 60 s (the server has no IDLE)"));
+    }
+
+    #[test]
+    fn a_check_says_when_it_read_not_how_it_keeps_up() {
+        let counts = Counts {
+            total: 0,
+            unseen: 0,
+            first: None,
+        };
+        for pushes in [true, false] {
+            let check = Situation {
+                watching: false,
+                ..situation(pushes)
+            };
+            assert_eq!(
+                assess(&counts, &check, 0).detail[1],
+                format!("Read from imap://127.0.0.1:1143 at {}", clock(0))
+            );
+        }
     }
 
     #[test]

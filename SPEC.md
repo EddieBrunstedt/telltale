@@ -323,6 +323,8 @@ up to 60 s.
 Oldest arrived 79 days ago (01-Aug-2026)
 Connected to imap://127.0.0.1:1143 since 19:05; the server pushes changes (IDLE)
 ```
+A check keeps nothing current, so its last line is when it read:
+`Read from imap://127.0.0.1:1143 at 19:05`.
 Unknown:
 ```
 Cannot measure since 19:04: imap://127.0.0.1:1143: Connection refused (os error 111)
