@@ -360,10 +360,12 @@ contract.
   `critical`, `unknown`): one palette for every gauge. Quiet is dim grey,
   attention is peach, critical and unknown are red.
 - **Other bar changes** (not Telltale):
-  - **mullvad-status:** stream from `mullvad status listen -j`, show the
-    2-letter country code (`󰌾 SE`), red `󰌿 off` when disconnected.
-  - **volume:** `󰕾 30%` / `󰖁  --`.
+  - **mullvad-status:** stream from `mullvad status -j listen`, show the
+    2-letter country code (`󰌾  SE`, from the relay hostname), red `󰌿 off`
+    when disconnected. Classes are level names.
+  - **volume:** `󰕾  30%` / `󰖁   --` (four cells, so `100%` fits).
   - **dunst-status:** `󰂚` / `󰂛` instead of emoji, peach when paused.
+  - **whitetemp-status:** `󰖔` instead of 🌙.
   - **clock:** `{:%a %d %H:%M}`; the tooltip has the calendar, ISO date and
     week.
   - **Order:** mem net │ inbox vpn volume │ units disk │ voxtype desktop
