@@ -318,12 +318,19 @@ up to 60 s.
 
 **Detail:**
 ```
-3 in INBOX, 1 unread
-Oldest: 2 days (Fri 17 Oct)
-Watching via IDLE since 16:16
+257 in INBOX, 203 unread
+Oldest arrived 79 days ago (01-Aug-2026)
+Connected to imap://127.0.0.1:1143 since 19:05; the server pushes changes (IDLE)
 ```
-Unknown: `Cannot reach 127.0.0.1:1143 since 17:40: connection refused. Last
-seen: 3 at 17:39.`
+Unknown:
+```
+Cannot measure since 19:04: imap://127.0.0.1:1143: Connection refused (os error 111)
+Last seen: 257 at 19:03
+```
+Times are local clock times, not ages: the detail is written once and read
+later, and "3 min ago" would go stale on screen. A missing credential
+variable is an unknown reading (`$VAR is not set`), not a usage error, so it
+shows on a bar instead of the gauge silently exiting.
 
 ---
 

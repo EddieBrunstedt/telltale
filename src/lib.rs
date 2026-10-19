@@ -6,4 +6,4 @@ pub mod gauge;
 pub mod reading;
 mod run;
 
-pub use run::run;
+pub use run::{Extra, Given, run, run_with};

@@ -1,6 +1,7 @@
 //! The gauges. Each one paces itself; `run` only asks for the next reading.
 
 pub mod disk;
+pub mod inbox;
 pub mod mem;
 pub mod net;
 mod pace;
