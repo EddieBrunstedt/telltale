@@ -9,6 +9,7 @@ const GAUGES: &[(&str, &str)] = &[
     (env!("CARGO_BIN_EXE_telltale-mem"), "󰍛"),
     (env!("CARGO_BIN_EXE_telltale-disk"), "󰋊"),
     (env!("CARGO_BIN_EXE_telltale-units"), "󰀦"),
+    (env!("CARGO_BIN_EXE_telltale-claude"), "󰚩"),
 ];
 
 fn run(exe: &str, args: &[&str]) -> (i32, String) {

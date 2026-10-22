@@ -1,0 +1,24 @@
+{
+  "pid": 471542,
+  "sessionId": "59e934af-43c6-4726-a9ca-ea34b7f9483d",
+  "cwd": "/home/nilo/desktop",
+  "startedAt": 1792622609350,
+  "procStart": "3404602",
+  "version": "2.1.306",
+  "peerProtocol": 1,
+  "peerFeatures": [
+    "notify_idle",
+    "reply_across_default_dirs",
+    "artifact_yield"
+  ],
+  "kind": "interactive",
+  "entrypoint": "cli",
+  "pidDomain": "linux:d9d1a93531f74c34aa8cf800da39c8c2:pid:[4026531836]",
+  "messagingSocketPath": "/run/user/1000/cc-socks/471542.sock",
+  "name": "desktop-a1",
+  "nameSource": "derived",
+  "nameSince": 1792622609350,
+  "status": "busy",
+  "updatedAt": 1792623497773,
+  "statusUpdatedAt": 1792623497773
+}

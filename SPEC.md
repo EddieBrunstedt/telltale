@@ -3,7 +3,7 @@
 Terms are defined in [GLOSSARY.md](GLOSSARY.md). This file is about how
 Telltale works; the glossary is about what its words mean.
 
-Five gauges, each its own executable ([ADR 0001](docs/adr/0001-one-executable-per-gauge.md)):
+Six gauges, each its own executable ([ADR 0001](docs/adr/0001-one-executable-per-gauge.md)):
 
 | executable | watches |
 |---|---|
@@ -12,6 +12,7 @@ Five gauges, each its own executable ([ADR 0001](docs/adr/0001-one-executable-pe
 | `telltale-disk` | the fullest local filesystem |
 | `telltale-units` | failed systemd units, system and user |
 | `telltale-inbox` | messages in an IMAP inbox you keep empty |
+| `telltale-claude` | Claude Code sessions, and whether one is waiting on you |
 
 Telltale knows nothing about waybar. Waybar is one consumer of the `waybar`
 format; see [Using Telltale from waybar](#using-telltale-from-waybar) at the
@@ -81,13 +82,13 @@ src/
   run.rs            run(gauge): arguments, check/watch, exit status
   gauge/
     mod.rs          the Gauge trait
-    net.rs mem.rs disk.rs units.rs
+    net.rs mem.rs disk.rs units.rs claude.rs
     inbox/          mod.rs (the gauge), imap.rs (the protocol)
   bin/
     telltale-net.rs …   each one line: telltale::run(Net::new())
 ```
 
-**`Gauge`** is the main seam, and it has five adapters:
+**`Gauge`** is the main seam, and it has six adapters:
 
 ```rust
 pub trait Gauge {
@@ -105,7 +106,7 @@ the same loop with a different stopping rule.
 **`run`** is a deep module: argument parsing, check versus watch, removing
 duplicate output, exit status, writing, stopping on EPIPE, and
 `PR_SET_PDEATHSIG(SIGTERM)` while watching (so a crashed parent leaves no
-orphans). It is all behind one function, used identically by all five
+orphans). It is all behind one function, used identically by all six
 executables.
 
 **`format`** is pure: `(reading, format, floor) -> String`.
@@ -143,6 +144,7 @@ Measured on this machine (353 processes, 16 threads) unless marked *est.*
 | inbox | on event | idle TCP connection, ~0 CPU | TLS handshake + 2 sops decrypts every 60 s |
 | units | 1/30 s | 2 `systemctl` spawns, ~5 ms | (new) |
 | disk | 1/60 s | 3 `statvfs` calls | (new) |
+| claude | on event | inotify watch + a pidfd per session; per change, the bytes appended to each transcript | (new) |
 
 Before: about 3 process spawns per second, including the dropped `cpubusy`
 (waybar runs each `exec` through `sh -c`). After: none in steady state apart
@@ -336,6 +338,95 @@ gets its date (`2026-10-17 16:15`). `units` does the same. A missing credential
 variable is an unknown reading (`$VAR is not set`), not a usage error, so it
 shows on a bar instead of the gauge silently exiting.
 
+## `telltale-claude`
+
+Claude Code sessions, and whether one is waiting on you. Desktop
+notifications already say when a session finishes; this is what stays on
+screen afterwards, and what a dismissed notification no longer says.
+
+**Measures:** Claude Code keeps one file per running session,
+`~/.claude/sessions/<pid>.json`, and rewrites it when the session's status
+changes. This is Claude Code's own bookkeeping, not a documented interface,
+so the gauge reads it strictly: a file it cannot parse, or a status it does
+not know, makes the reading unknown rather than quietly wrong. The fields
+read, as observed with Claude Code 2.1.306 on 2026-10-22:
+
+| field | meaning |
+|---|---|
+| `status` | `busy` working (also while a `!` shell command runs); `idle` the turn is over; `waiting` blocked on you; `shell` known to Claude Code but not seen, read as working; absent for a moment after the session starts |
+| `waitingFor` | why it waits: `permission prompt`, `input needed` (a question) |
+| `statusUpdatedAt` | when the status was last written (ms since the epoch) |
+| `pid`, `procStart` | the process, and its start time in clock ticks (`/proc/<pid>/stat` field 22) |
+| `name`, `cwd`, `kind` | the session's short name, its directory, and `interactive`, `bg`, `daemon` or `daemon-worker` |
+| `sessionId` | names its transcript |
+
+**Titles** come from the session's transcript,
+`~/.claude/projects/<cwd>/<sessionId>.jsonl`, where `<cwd>` has every
+character but letters and digits turned into `-`. Claude Code appends a
+title record every turn or so: `{"type":"ai-title","aiTitle":…}` for the
+title it chose, `{"type":"custom-title","customTitle":…}` after `/rename`.
+The last one is the title, as for the dunst hook, so the tooltip and the
+window titles agree. Only lines that start as a title record count, so a
+title quoted in a message is not one. Transcripts run to 25 MB here, so the
+gauge remembers how far it has read each one and reads only what was
+appended since; a line without its newline yet is left for next time, and a
+transcript shorter than what was read is read again from the start. A check
+reads them whole (3 sessions, 4.3 MB: 2 ms). A title is an extra, like
+`units`' why and when: a transcript that cannot be read leaves the session
+under its short name, not the reading unknown. A new title shows with the
+session's next status change, usually the end of the turn that made it.
+
+A session killed outright (`kill -9`, a crashed terminal) leaves its file
+behind until Claude Code sweeps it, so a file counts only while its `pid` is
+alive and its start time matches `procStart` (a reused pid does not). The
+gauge never removes files; that is Claude Code's job. `kind: daemon` is
+Claude Code's own supervisor, not a session, and is not counted.
+
+Watching: inotify on the directory, reading on `close_write`, `moved_to`,
+`moved_from` and `delete` (a new file is written in place and is empty at
+`create`), plus a pidfd per live session, which becomes readable when the
+process exits, for the deaths that leave no trace in the directory. A file
+that does not parse is read again after 50 ms, up to three times, before the
+reading turns unknown: it may be half-written. If the directory cannot be
+watched, the reading is unknown and the watch is retried every 60 s.
+
+**Summary:** `󰚩 ` + the sessions working (busy or shell), then `󰒲 ` + the
+rest, each left-aligned in 2: `󰚩 1 󰒲 2 `. The rest are idle, waiting or
+starting; in all of them the next move is yours. `󰚩 ? 󰒲 ? ` when unknown.
+
+**Levels:**
+- quiet: no sessions
+- normal: at least one open, working or idle
+- attention: at least one waiting on you
+
+An idle session is normal, not quiet: it is waiting for your next message,
+and writing it is often what you do next, so a bar that hides the floor
+below normal still shows it. It is not attention either: the turn is over,
+the notification said so, and a session left open would keep the bar peach
+all day. Waiting is: the session cannot go on without you.
+
+**Detail:** a light table, one row per session, marked with the bar's
+icons (`󰏤` for waiting on you):
+```
+   Session                                 Directory         Since
+───────────────────────────────────────────────────────────────────────────────────────
+󰏤  Upstream sync for local fixes           ~/projects/mango  01:58  permission prompt
+󰚩  Claude Code in Waybar                   ~/desktop         01:53
+󰒲  Cargo-nextest --locked install failure  ~/desktop         01:54
+```
+Waiting first, then working, then idle; within each, newest first (the
+session that just finished is the one you are most likely to answer), and
+by title when two changed in the same second, so rows never swap places
+between readings. Since is when the session's status last changed. Why a
+session waits trails its row rather than getting a column: it is rare, and
+an empty column would widen every tooltip. The rule is as wide as the
+widest line. No count line: the rows are the count. Titles are cut to 40
+characters (`…`), so one long title does not widen every row; a session
+without a title yet shows its short name (`desktop-a1`). Each icon is one
+cell in a Nerd Font, so the columns line up under their names.
+No sessions: `No Claude Code sessions`. Unknown: `Cannot measure: ` + why,
+naming the file.
+
 ---
 
 ## Using Telltale from waybar
@@ -352,6 +443,8 @@ contract.
                   "on-click": "ghostty -e sh -c 'systemctl --failed; systemctl --user --failed; read'",
                   "on-click-right": "systemctl --user reset-failed" },
 "custom/disk":  { "exec": "telltale-disk --watch --format waybar --floor attention",  "return-type": "json" },
+"custom/claude": { "exec": "telltale-claude --watch --format waybar --floor normal", "return-type": "json",
+                   "on-click": "claude-focus" },
 ```
 
 - **Shim:** add the manifest line
@@ -372,7 +465,11 @@ contract.
   - **whitetemp-status:** `󰖔` instead of 🌙.
   - **clock:** `{:%a %d %H:%M}`; the tooltip has the calendar, ISO date and
     week.
-  - **Order:** mem net │ inbox vpn volume │ units disk │ voxtype desktop
+  - **claude-focus** (dotfiles): focuses the Ghostty window of the top row
+    of the tooltip that is not working (the newest waiting session, or else
+    the one that finished last), matching the window title to the session
+    title as the dunst hook does.
+  - **Order:** mem net │ inbox claude vpn volume │ units disk │ voxtype desktop
     whitetemp idle dunst │ clock │ tray.
   - **Padding:** 8 → 6 px.
 
@@ -390,3 +487,7 @@ contract.
 - `inbox` does not get more urgent with age.
 - `mem` has no per-app breakdown.
 - Gauges always report; hiding is the floor, chosen by the display.
+- `claude`'s detail has no line saying how it keeps up (`Watching …
+  (inotify)`) or when a check read: the sessions and their clock times are
+  what matters there, and the line read as jargon. It is the one gauge whose
+  detail does not say how fresh it is.
