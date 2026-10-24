@@ -4,7 +4,8 @@ use crate::reading::{Level, Reading};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
-    /// For a person: `level: summary`, then the detail.
+    /// For a person: `level: summary`, then the detail. The summary's trailing
+    /// padding, there to keep a bar segment's width, is dropped.
     Text,
     /// One JSON object per line, as waybar's `return-type: json` expects.
     Waybar,
@@ -28,7 +29,7 @@ pub fn render(reading: &Reading, format: Format, floor: Level) -> String {
     match format {
         Format::Text if hidden => String::new(),
         Format::Text => {
-            let mut out = format!("{}: {}", reading.level.name(), reading.summary);
+            let mut out = format!("{}: {}", reading.level.name(), reading.summary.trim_end());
             for line in &reading.detail {
                 out.push('\n');
                 out.push_str(line);
@@ -78,6 +79,19 @@ mod tests {
             render(&reading(Level::Attention), Format::Text, Level::Quiet),
             "attention: 󰋊 92%\n/  92%\na <b> & c"
         );
+    }
+
+    #[test]
+    fn text_drops_the_padding_waybar_keeps() {
+        let r = Reading {
+            summary: "󰍛 7%  ".to_owned(),
+            detail: vec![],
+            ..reading(Level::Quiet)
+        };
+        assert_eq!(render(&r, Format::Text, Level::Quiet), "quiet: 󰍛 7%");
+        let v: serde_json::Value =
+            serde_json::from_str(&render(&r, Format::Waybar, Level::Quiet)).unwrap();
+        assert_eq!(v["text"], "󰍛 7%  ");
     }
 
     #[test]

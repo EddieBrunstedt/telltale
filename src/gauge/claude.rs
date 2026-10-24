@@ -558,9 +558,10 @@ fn table(sessions: &[Session], home: &str) -> Vec<String> {
 
 /// Working sessions by the robot, idle ones by the sleep sign. Each count is
 /// left-aligned in 2 characters, so the summary does not change width and
-/// the padding falls after a count, not between it and its icon.
+/// the padding falls after a count, not between it and its icon. A space
+/// follows the working count's pad, so `10` does not run into the sleep sign.
 fn summary(working: &str, idle: &str) -> String {
-    format!("󰚩 {working:<2}󰒲 {idle:<2}")
+    format!("󰚩 {working:<2} 󰒲 {idle:<2}")
 }
 
 #[cfg(test)]
@@ -797,7 +798,7 @@ mod tests {
     fn no_sessions_is_quiet() {
         let reading = assess(Ok(vec![]), HOME);
         assert_eq!(reading.level, Level::Quiet);
-        assert_eq!(reading.summary, "󰚩 0 󰒲 0 ");
+        assert_eq!(reading.summary, "󰚩 0  󰒲 0 ");
         assert_eq!(reading.detail, ["No Claude Code sessions"]);
     }
 
@@ -811,7 +812,7 @@ mod tests {
             HOME,
         );
         assert_eq!(reading.level, Level::Normal);
-        assert_eq!(reading.summary, "󰚩 0 󰒲 2 ");
+        assert_eq!(reading.summary, "󰚩 0  󰒲 2 ");
     }
 
     #[test]
@@ -825,7 +826,7 @@ mod tests {
             HOME,
         );
         assert_eq!(reading.level, Level::Normal);
-        assert_eq!(reading.summary, "󰚩 2 󰒲 1 ");
+        assert_eq!(reading.summary, "󰚩 2  󰒲 1 ");
     }
 
     #[test]
@@ -857,7 +858,7 @@ mod tests {
             HOME,
         );
         assert_eq!(reading.level, Level::Attention);
-        assert_eq!(reading.summary, "󰚩 1 󰒲 3 ", "the waiting are idle too");
+        assert_eq!(reading.summary, "󰚩 1  󰒲 3 ", "the waiting are idle too");
         let since = |t| format!("{:<w$}", clock(t), w = clock(AT).len());
         let rows = [
             format!(
@@ -935,7 +936,12 @@ mod tests {
             HOME,
         );
         assert_eq!(reading.level, Level::Unknown);
-        assert_eq!(reading.summary, "󰚩 ? 󰒲 ? ");
+        assert_eq!(reading.summary, "󰚩 ?  󰒲 ? ");
+        assert_eq!(
+            summary("10", "2"),
+            "󰚩 10 󰒲 2 ",
+            "a 2-digit count keeps its space"
+        );
         assert_eq!(
             reading.detail,
             [

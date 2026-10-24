@@ -208,17 +208,17 @@ fn assess(observation: &Observation) -> Reading {
     match observation {
         Observation::Unreadable(why) => Reading {
             level: Level::Unknown,
-            summary: summary("   ?", "   ?"),
+            summary: summary("?", "?"),
             detail: vec![format!("Cannot measure: {why}")],
         },
         Observation::NoRoute => Reading {
             level: Level::Critical,
-            summary: summary(" off", " off"),
+            summary: summary("off", "off"),
             detail: vec!["No default route in the main routing table.".to_owned()],
         },
         Observation::Down { iface } => Reading {
             level: Level::Critical,
-            summary: summary(" off", " off"),
+            summary: summary("off", "off"),
             detail: vec![format!("{iface} carries the default route but is down.")],
         },
         Observation::Up {
@@ -261,36 +261,38 @@ fn assess(observation: &Observation) -> Reading {
             ));
             Reading {
                 level,
-                summary: summary(&rate4(rx), &rate4(tx)),
+                summary: summary(&rate(rx), &rate(tx)),
                 detail,
             }
         }
     }
 }
 
-/// Both directions, each exactly 4 characters, so every reading of this
-/// gauge has the same width.
+/// Both directions, each left-aligned in 4 characters, so every reading of
+/// this gauge has the same width and the padding falls after a rate, not
+/// between it and its arrow.
 fn summary(down: &str, up: &str) -> String {
-    format!("󰁅 {down} 󰁝 {up}")
+    format!("󰁅 {down:<4} 󰁝 {up:<4}")
 }
 
-/// A rate in exactly 4 characters: `512B`, `1.2K`, ` 34K`, `1.2M`, `340M`.
-fn rate4(bytes_per_sec: f64) -> String {
+/// A rate in at most 4 characters: `0B`, `512B`, `1.2K`, `34K`, `1.2M`,
+/// `340M`. Only 999.5 GB/s and up (`1000G`) takes more.
+fn rate(bytes_per_sec: f64) -> String {
     let b = bytes_per_sec;
     if b < 999.5 {
-        format!("{:>3}B", b.round() as u64)
+        format!("{}B", b.round() as u64)
     } else if b < 9_950.0 {
         format!("{:.1}K", b / 1e3)
     } else if b < 999_500.0 {
-        format!("{:>3}K", (b / 1e3).round() as u64)
+        format!("{}K", (b / 1e3).round() as u64)
     } else if b < 9_950_000.0 {
         format!("{:.1}M", b / 1e6)
     } else if b < 999_500_000.0 {
-        format!("{:>3}M", (b / 1e6).round() as u64)
+        format!("{}M", (b / 1e6).round() as u64)
     } else if b < 9_950_000_000.0 {
         format!("{:.1}G", b / 1e9)
     } else {
-        format!("{:>3}G", (b / 1e9).round() as u64)
+        format!("{}G", (b / 1e9).round() as u64)
     }
 }
 
@@ -459,26 +461,26 @@ mod tests {
     }
 
     #[test]
-    fn rates_are_always_four_characters() {
+    fn rates_fit_in_four_characters() {
         let cases = [
-            (0.0, "  0B"),
+            (0.0, "0B"),
             (512.0, "512B"),
             (999.4, "999B"),
             (999.5, "1.0K"),
             (1_234.0, "1.2K"),
             (9_949.0, "9.9K"),
-            (9_950.0, " 10K"),
-            (34_012.0, " 34K"),
+            (9_950.0, "10K"),
+            (34_012.0, "34K"),
             (999_499.0, "999K"),
             (999_500.0, "1.0M"),
             (1_234_567.0, "1.2M"),
-            (9_950_000.0, " 10M"),
+            (9_950_000.0, "10M"),
             (340_000_000.0, "340M"),
             (999_500_000.0, "1.0G"),
             (125_000_000_000.0, "125G"),
         ];
-        for (rate, shown) in cases {
-            assert_eq!(rate4(rate), shown, "rate {rate}");
+        for (bytes, shown) in cases {
+            assert_eq!(rate(bytes), shown, "rate {bytes}");
         }
     }
 
@@ -570,6 +572,7 @@ mod tests {
         assert_eq!(width(&up(0, 0, 1.0)), normal);
         assert_eq!(width(&Observation::NoRoute), normal);
         assert_eq!(width(&Observation::Unreadable(String::new())), normal);
+        assert_eq!(assess(&up(0, 34_012, 1.0)).summary, "󰁅 0B   󰁝 34K ");
     }
 
     #[test]

@@ -213,7 +213,7 @@ fn assess(filesystems: Result<Measured, String>) -> Reading {
     };
     Reading {
         level,
-        summary: summary(&format!("{fullest:>3}%")),
+        summary: summary(&format!("{fullest}%")),
         detail,
     }
 }
@@ -221,14 +221,15 @@ fn assess(filesystems: Result<Measured, String>) -> Reading {
 fn unknown(detail: Vec<String>) -> Reading {
     Reading {
         level: Level::Unknown,
-        summary: summary("   ?"),
+        summary: summary("?"),
         detail,
     }
 }
 
-/// The value is exactly 4 characters, so every summary has the same width.
+/// The value is left-aligned in 4 characters, so every summary has the same
+/// width and the padding falls after the value, not between it and the icon.
 fn summary(value: &str) -> String {
-    format!("󰋊 {value}")
+    format!("󰋊 {value:<4}")
 }
 
 /// Binary units with three significant figures: `172 GiB`, `3.64 TiB`.
@@ -359,7 +360,7 @@ mod tests {
             ),
         ]));
         assert_eq!(reading.level, Level::Unknown);
-        assert_eq!(reading.summary, summary("   ?"));
+        assert_eq!(reading.summary, "󰋊 ?   ");
         assert_eq!(
             reading.detail[0],
             "/boot  cannot measure: Permission denied (os error 13)"
@@ -412,7 +413,7 @@ mod tests {
             ),
         ]));
         assert_eq!(reading.level, Level::Normal);
-        assert_eq!(reading.summary, summary(" 71%"));
+        assert_eq!(reading.summary, "󰋊 71% ");
         assert_eq!(
             reading.detail,
             [

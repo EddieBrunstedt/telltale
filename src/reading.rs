@@ -48,7 +48,8 @@ impl Level {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Reading {
     pub level: Level,
-    /// A few characters, the same width for every reading of a gauge.
+    /// A few characters, the same width for every reading of a gauge (values
+    /// are padded after, on the right).
     pub summary: String,
     /// What was measured, over what window, how fresh. One entry per line.
     pub detail: Vec<String>,

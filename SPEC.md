@@ -52,8 +52,9 @@ telltale-<gauge> [--watch] [--format text|waybar] [--floor LEVEL]
   /       92%  34 GiB free of 418 GiB  (ext4, sda3)
   /boot   14%  ...
   ```
-  The first line is level and summary; the detail follows. When watching,
-  readings are separated by a blank line.
+  The first line is level and summary, without the summary's trailing
+  padding (see below); the detail follows. When watching, readings are
+  separated by a blank line.
 - `--format waybar`: one JSON object per line:
   `{"text": summary, "class": level, "tooltip": detail}`. The detail is
   Pango-escaped (`&`, `<`, `>`), because waybar renders tooltips as Pango
@@ -70,7 +71,12 @@ is closed. Bad arguments exit 64 (`EX_USAGE`).
 `telltale-inbox` takes extra options; see its section.
 
 Summaries use Nerd Font glyphs (`󰋊`, `󰇮`, …) and assume a terminal or bar
-font that has them.
+font that has them. Every value is left-aligned in a fixed width, wide
+enough for its usual values, so a summary keeps its width and the padding
+falls after the value, not between it and its icon: right-aligned, `󰇮   8`
+read as part of the segment to its right. A value that outgrows its width
+(a 4-digit inbox, `1000G` of traffic) widens the summary rather than being
+cut. The padding is for the bar; the `text` format drops it.
 
 ## Design
 
@@ -177,7 +183,7 @@ from `units`.
 kernel can reclaim it. `MemAvailable` is the kernel's own estimate of what
 could be handed out without swapping. Every 2 s.
 
-**Summary:** `󰍛 ` + `{:>3}%`
+**Summary:** `󰍛 ` + the percentage left-aligned in 4 (`7%  `, `100%`)
 
 **Levels:**
 - quiet < 50%, normal < 80%
@@ -210,19 +216,22 @@ divided by the measured elapsed time (monotonic clock). No smoothing. If a
 counter goes backwards (interface reset), that window is dropped rather than
 reported as a huge or negative rate.
 
-**Summary:** `󰁅 ` + rate + ` 󰁝 ` + rate, each rate 4 characters:
+**Summary:** `󰁅 ` + rate + ` 󰁝 ` + rate, each rate left-aligned in 4
+characters:
 
 | bytes/s | shown |
 |---|---|
-| < 999.5 | `512B` |
+| < 999.5 | `0B  `, `12B `, `512B` |
 | < 9.95 K | `1.2K` |
-| < 999.5 K | ` 34K` |
+| < 999.5 K | `34K ` |
 | < 9.95 M | `1.2M` |
 | < 999.5 M | `340M` |
+| < 9.95 G | `1.2G` |
+| < 999.5 G | `125G` |
 
 **Levels:** quiet when both directions are < 10 K/s, otherwise normal.
-Critical, with summary `󰁅  off`, when there is no default route or its
-interface's `operstate` is not `up`. No attention level: high throughput
+Critical, with summary `󰁅 off  󰁝 off `, when there is no default route or
+its interface's `operstate` is not `up`. No attention level: high throughput
 isn't a problem.
 
 **Detail:**
@@ -245,7 +254,8 @@ twice (bind mounts, btrfs subvolumes) is listed once, under its shortest
 path. If any filesystem cannot be measured, the reading is unknown: "the
 fullest" is then not knowable.
 
-**Summary:** `󰋊 ` + `{:>3}%` of the fullest filesystem.
+**Summary:** `󰋊 ` + the percentage of the fullest filesystem, left-aligned
+in 4.
 
 **Levels:** normal < 90%, attention ≥ 90%, critical ≥ 95%, from the fullest
 filesystem.
@@ -260,7 +270,7 @@ json`, every 30 s (~5 ms for both). A D-Bus subscription would react
 instantly, but it needs `zbus` (a large dependency tree), and systemd has no
 "failed count changed" signal to subscribe to. A 30 s delay is fine here.
 
-**Summary:** `󰀦 ` + count.
+**Summary:** `󰀦 ` + count, left-aligned in 2.
 
 **Levels:** quiet at 0, critical at 1 or more. A unit systemd restarts on
 failure never stays failed, so it never shows here; what does show is a unit
@@ -313,7 +323,7 @@ check (no `--watch`) connects, reads, logs out.
 with its own delay. Proton Bridge polls Proton for events, so new mail
 appears when Bridge notices it.
 
-**Summary:** `󰇮 ` + `{:>3}`; `󰇮   ?` when unknown.
+**Summary:** `󰇮 ` + count, left-aligned in 3; `󰇮 ?  ` when unknown.
 
 **Levels:** quiet at 0, attention above 0. Unknown when the server is
 unreachable or login fails. While watching, it retries with backoff from 5 s
@@ -391,8 +401,10 @@ reading turns unknown: it may be half-written. If the directory cannot be
 watched, the reading is unknown and the watch is retried every 60 s.
 
 **Summary:** `󰚩 ` + the sessions working (busy or shell), then `󰒲 ` + the
-rest, each left-aligned in 2: `󰚩 1 󰒲 2 `. The rest are idle, waiting or
-starting; in all of them the next move is yours. `󰚩 ? 󰒲 ? ` when unknown.
+rest, each left-aligned in 2 and the working count followed by a space, so
+`10` does not touch `󰒲`: `󰚩 1  󰒲 2 `, `󰚩 10 󰒲 2 `. The rest are idle,
+waiting or starting; in all of them the next move is yours. `󰚩 ?  󰒲 ? ` when
+unknown.
 
 **Levels:**
 - quiet: no sessions
@@ -458,9 +470,10 @@ contract.
   attention is peach, critical and unknown are red.
 - **Other bar changes** (not Telltale):
   - **mullvad-status:** stream from `mullvad status -j listen`, show the
-    2-letter country code (`󰌾  SE`, from the relay hostname), red `󰌿 off`
+    2-letter country code (`󰌾 SE `, from the relay hostname), red `󰌿 off`
     when disconnected. Classes are level names.
-  - **volume:** `󰕾  30%` / `󰖁   --` (four cells, so `100%` fits).
+  - **volume:** `󰕾 30% ` / `󰖁 --  ` (four left-aligned cells, so `100%`
+    fits).
   - **dunst-status:** `󰂚` / `󰂛` instead of emoji, peach when paused.
   - **whitetemp-status:** `󰖔` instead of 🌙.
   - **clock:** `{:%a %d %H:%M}`; the tooltip has the calendar, ISO date and
@@ -472,6 +485,9 @@ contract.
   - **Order:** mem net │ inbox claude vpn volume │ units disk │ voxtype desktop
     whitetemp idle dunst │ clock │ tray.
   - **Padding:** 8 → 6 px.
+  - **Segments:** each sits in a recessed pill (`#181825`, a shade darker
+    than the bar, 6 px radius); the icon-only toggles (voxtype desktop
+    whitetemp idle dunst) share one, as a waybar group.
 
 ## Decisions
 

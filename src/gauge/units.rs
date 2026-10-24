@@ -172,7 +172,7 @@ fn assess(failed: Result<Vec<Failed>, String>) -> Reading {
         Err(why) => {
             return Reading {
                 level: Level::Unknown,
-                summary: summary(" ?"),
+                summary: summary("?"),
                 detail: vec![format!("Cannot measure: {why}")],
             };
         }
@@ -180,7 +180,7 @@ fn assess(failed: Result<Vec<Failed>, String>) -> Reading {
     if failed.is_empty() {
         return Reading {
             level: Level::Quiet,
-            summary: summary(" 0"),
+            summary: summary("0"),
             detail: vec!["No failed units, system or user".to_owned()],
         };
     }
@@ -208,15 +208,16 @@ fn assess(failed: Result<Vec<Failed>, String>) -> Reading {
         // Units that systemd restarts never get here; only the ones it gave
         // up on do, and those stay down until someone acts. Broken, so red.
         level: Level::Critical,
-        summary: summary(&format!("{:>2}", failed.len())),
+        summary: summary(&failed.len().to_string()),
         detail,
     }
 }
 
-/// The count is 2 characters (a 3-digit count of failed units widens it,
-/// rather than being hidden), so the summary does not change width.
+/// The count is left-aligned in 2 characters (a 3-digit count of failed units
+/// widens it, rather than being hidden), so the summary does not change width
+/// and the padding falls after the count, not between it and the icon.
 fn summary(count: &str) -> String {
-    format!("󰀦 {count}")
+    format!("󰀦 {count:<2}")
 }
 
 #[cfg(test)]
@@ -281,7 +282,7 @@ mod tests {
     fn nothing_failed_is_quiet() {
         let reading = assess(Ok(vec![]));
         assert_eq!(reading.level, Level::Quiet);
-        assert_eq!(reading.summary, summary(" 0"));
+        assert_eq!(reading.summary, "󰀦 0 ");
     }
 
     #[test]
@@ -301,7 +302,7 @@ mod tests {
             ),
         ]));
         assert_eq!(reading.level, Level::Critical);
-        assert_eq!(reading.summary, summary(" 2"));
+        assert_eq!(reading.summary, "󰀦 2 ");
         assert_eq!(
             reading.detail,
             [

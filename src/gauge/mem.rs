@@ -103,7 +103,7 @@ fn assess(memory: Result<Memory, String>, stalled: Option<f64>) -> Reading {
         Err(why) => {
             return Reading {
                 level: Level::Unknown,
-                summary: summary("   ?"),
+                summary: summary("?"),
                 detail: vec![format!("Cannot measure: {why}")],
             };
         }
@@ -124,7 +124,7 @@ fn assess(memory: Result<Memory, String>, stalled: Option<f64>) -> Reading {
     };
     Reading {
         level,
-        summary: summary(&format!("{percent:>3}%")),
+        summary: summary(&format!("{percent}%")),
         detail: vec![
             format!(
                 "Used {} of {} (available {})",
@@ -149,9 +149,10 @@ fn assess(memory: Result<Memory, String>, stalled: Option<f64>) -> Reading {
     }
 }
 
-/// The value is exactly 4 characters, so every summary has the same width.
+/// The value is left-aligned in 4 characters, so every summary has the same
+/// width and the padding falls after the value, not between it and the icon.
 fn summary(value: &str) -> String {
-    format!("󰍛 {value}")
+    format!("󰍛 {value:<4}")
 }
 
 fn gib(kib: u64) -> String {
@@ -200,18 +201,18 @@ mod tests {
     #[test]
     fn the_level_follows_the_rounded_percentage_shown() {
         let cases = [
-            (494, Level::Quiet, " 49%"),
-            (495, Level::Normal, " 50%"),
-            (794, Level::Normal, " 79%"),
-            (795, Level::Attention, " 80%"),
-            (894, Level::Attention, " 89%"),
-            (895, Level::Critical, " 90%"),
+            (494, Level::Quiet, "49% "),
+            (495, Level::Normal, "50% "),
+            (794, Level::Normal, "79% "),
+            (795, Level::Attention, "80% "),
+            (894, Level::Attention, "89% "),
+            (895, Level::Critical, "90% "),
             (1000, Level::Critical, "100%"),
         ];
         for (tenths, level, shown) in cases {
             let reading = assess(Ok(used(tenths)), Some(0.0));
             assert_eq!(reading.level, level, "{tenths}‰");
-            assert_eq!(reading.summary, summary(shown), "{tenths}‰");
+            assert_eq!(reading.summary, format!("󰍛 {shown}"), "{tenths}‰");
         }
     }
 
@@ -226,9 +227,11 @@ mod tests {
     fn unreadable_is_unknown_and_the_same_width() {
         let unknown = assess(Err("/proc/meminfo: gone".to_owned()), None);
         assert_eq!(unknown.level, Level::Unknown);
+        let width = |r: Reading| r.summary.chars().count();
+        assert_eq!(width(unknown), width(assess(Ok(used(70)), None)));
         assert_eq!(
-            unknown.summary.chars().count(),
-            assess(Ok(used(500)), None).summary.chars().count()
+            width(assess(Ok(used(1000)), None)),
+            width(assess(Ok(used(70)), None))
         );
     }
 

@@ -366,7 +366,7 @@ fn assess(counts: &Counts, situation: &Situation, now: i64) -> Reading {
         } else {
             Level::Attention
         },
-        summary: summary(&format!("{:>3}", counts.total)),
+        summary: summary(&counts.total.to_string()),
         detail,
     }
 }
@@ -378,15 +378,16 @@ fn unknown(why: &str, since: i64, last_seen: Option<(u32, i64)>) -> Reading {
     }
     Reading {
         level: Level::Unknown,
-        summary: summary("  ?"),
+        summary: summary("?"),
         detail,
     }
 }
 
-/// The count is 3 characters (a 4-digit inbox widens it rather than being
-/// cut), so the summary does not change width.
+/// The count is left-aligned in 3 characters (a 4-digit inbox widens it rather
+/// than being cut), so the summary does not change width and the padding falls
+/// after the count, not between it and the icon.
 fn summary(count: &str) -> String {
-    format!("󰇮 {count}")
+    format!("󰇮 {count:<3}")
 }
 
 fn days_ago(secs: i64) -> String {
@@ -631,7 +632,7 @@ mod tests {
         };
         let reading = assess(&empty, &situation(true), 0);
         assert_eq!(reading.level, Level::Quiet);
-        assert_eq!(reading.summary, summary("  0"));
+        assert_eq!(reading.summary, "󰇮 0  ");
 
         let one = Counts {
             total: 1,
