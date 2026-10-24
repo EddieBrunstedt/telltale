@@ -2,16 +2,17 @@
 
 Terms are defined in [GLOSSARY.md](GLOSSARY.md). This file is about how Telltale works; the glossary is about what its words mean.
 
-Six gauges, each its own executable ([ADR 0001](docs/adr/0001-one-executable-per-gauge.md)):
+Seven gauges, each its own executable ([ADR 0001](docs/adr/0001-one-executable-per-gauge.md)):
 
-| executable        | watches                                                 |
-| ----------------- | ------------------------------------------------------- |
-| `telltale-net`    | traffic on the interface that carries the default route |
-| `telltale-mem`    | memory in use                                           |
-| `telltale-disk`   | the fullest local filesystem                            |
-| `telltale-units`  | failed systemd units, system and user                   |
-| `telltale-inbox`  | messages in an IMAP inbox you keep empty                |
-| `telltale-claude` | Claude Code sessions, and whether one is waiting on you |
+| executable         | watches                                                 |
+| ------------------ | ------------------------------------------------------- |
+| `telltale-net`     | traffic on the interface that carries the default route |
+| `telltale-mem`     | memory in use                                           |
+| `telltale-disk`    | the fullest local filesystem                            |
+| `telltale-units`   | failed systemd units, system and user                   |
+| `telltale-inbox`   | messages in an IMAP inbox you keep empty                |
+| `telltale-claude`  | Claude Code sessions, and whether one is waiting on you |
+| `telltale-desktop` | `~/desktop`, a drawer you keep empty                    |
 
 Telltale knows nothing about waybar. Waybar is one consumer of the `waybar` format; see [Using Telltale from waybar](#using-telltale-from-waybar) at the end.
 
@@ -61,13 +62,14 @@ src/
   run.rs            run(gauge): arguments, check/watch, exit status
   gauge/
     mod.rs          the Gauge trait
-    net.rs mem.rs disk.rs units.rs claude.rs
+    net.rs mem.rs disk.rs units.rs claude.rs desktop.rs
     inbox/          mod.rs (the gauge), imap.rs (the protocol)
+    inotify.rs      watching a directory, for claude and desktop
   bin/
     telltale-net.rs …   each one line: telltale::run(Net::new())
 ```
 
-**`Gauge`** is the main seam, and it has six adapters:
+**`Gauge`** is the main seam, and it has seven adapters:
 
 ```rust
 pub trait Gauge {
@@ -80,7 +82,7 @@ pub trait Gauge {
 
 A gauge decides its own pace: `net` sleeps out its 1 s window, `inbox` blocks on the IMAP connection. `run` neither knows nor cares, so check and watch are the same loop with a different stopping rule.
 
-**`run`** is a deep module: argument parsing, check versus watch, removing duplicate output, exit status, writing, stopping on EPIPE, and `PR_SET_PDEATHSIG(SIGTERM)` while watching (so a crashed parent leaves no orphans). It is all behind one function, used identically by all six executables.
+**`run`** is a deep module: argument parsing, check versus watch, removing duplicate output, exit status, writing, stopping on EPIPE, and `PR_SET_PDEATHSIG(SIGTERM)` while watching (so a crashed parent leaves no orphans). It is all behind one function, used identically by all seven executables.
 
 **`format`** is pure: `(reading, format, floor) -> String`.
 
@@ -102,14 +104,15 @@ The I/O wrappers are verified by running them on this machine, not mocked.
 
 Measured on this machine (353 processes, 16 threads) unless marked _est._
 
-| gauge  | wakes    | steady cost                                                                            | replaces                                   |
-| ------ | -------- | -------------------------------------------------------------------------------------- | ------------------------------------------ |
-| mem    | 1/2 s    | 1 file read                                                                            | `sh` + `free` + `awk` every 5 s            |
-| net    | 1/s      | 1 file read                                                                            | `sh` + `routebps` every 1 s                |
-| inbox  | on event | idle TCP connection, ~0 CPU                                                            | TLS handshake + 2 sops decrypts every 60 s |
-| units  | 1/30 s   | 2 `systemctl` spawns, ~5 ms                                                            | (new)                                      |
-| disk   | 1/60 s   | 3 `statvfs` calls                                                                      | (new)                                      |
-| claude | on event | inotify watch + a pidfd per session; per change, the bytes appended to each transcript | (new)                                      |
+| gauge   | wakes    | steady cost                                                                                 | replaces                                                                                              |
+| ------- | -------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| mem     | 1/2 s    | 1 file read                                                                                 | `sh` + `free` + `awk` every 5 s                                                                       |
+| net     | 1/s      | 1 file read                                                                                 | `sh` + `routebps` every 1 s                                                                           |
+| inbox   | on event | idle TCP connection, ~0 CPU                                                                 | TLS handshake + 2 sops decrypts every 60 s                                                            |
+| units   | 1/30 s   | 2 `systemctl` spawns, ~5 ms                                                                 | (new)                                                                                                 |
+| disk    | 1/60 s   | 3 `statvfs` calls                                                                           | (new)                                                                                                 |
+| claude  | on event | inotify watch + a pidfd per session; per change, the bytes appended to each transcript      | (new)                                                                                                 |
+| desktop | on event | inotify watch; per change, 1 directory read, 1 `lstat` per entry and 1 read of `/proc/stat` | `sh` + `find` + `sort` every 30 s and on each change, signalled by `inotifywait` in a unit of its own |
 
 Before: about 3 process spawns per second, including the dropped `cpubusy` (waybar runs each `exec` through `sh -c`). After: none in steady state apart from `units`.
 
@@ -285,6 +288,34 @@ An idle session is normal, not quiet: it is waiting for your next message, and w
 
 Waiting first, then working, then idle; within each, newest first (the session that just finished is the one you are most likely to answer), and by title when two changed in the same second, so rows never swap places between readings. Since is when the session's status last changed. Why a session waits trails its row rather than getting a column: it is rare, and an empty column would widen every tooltip. The rule is as wide as the widest line. No count line: the rows are the count. Titles are cut to 40 characters (`…`), so one long title does not widen every row; a session without a title yet shows its short name (`desktop-a1`). Each icon is one cell in a Nerd Font, so the columns line up under their names. No sessions: `No Claude Code sessions`. Unknown: `Cannot measure: ` + why, naming the file.
 
+## `telltale-desktop`
+
+`~/desktop` is a drawer you keep empty: whatever is in it is waiting to be filed or deleted. Something dropped there this boot is work in progress; something that was already there before it has been forgotten.
+
+**Measures:** every entry of `~/desktop`, hidden ones included, and each entry's ctime (`lstat`, so a symlink is judged by when the link was made, and a dangling one still counts). An entry whose ctime is older than boot (`btime` in `/proc/stat`) is **left over**: it has been there since an earlier boot. Creating, copying or moving an entry into the drawer sets its ctime, so this needs no state of Telltale's own and survives restarts of whoever displays it. Checked on this machine's ext4: `mv` and `cp -a` both set ctime to now while keeping the old mtime, which is why mtime would not do. The price: anything else that changes an old entry's ctime (`chmod`, `touch`, editing it, and for a folder, adding to or removing from it) counts it as arrived this boot.
+
+Watching: inotify on the drawer, reading on `create`, `delete`, `moved_to`, `moved_from`, `attrib` and `close_write` (the last two catch a ctime change on an entry already there). A change inside a folder in the drawer is not seen until the drawer itself next changes. If the drawer is removed, the reading says so, and the watch is retried every 60 s; the gauge never creates it.
+
+**Summary:** `󰚇` when empty, `󱉲` otherwise (the same width, so the bar does not shift). No count: how many matters less than whether, and the detail lists them.
+
+**Levels:**
+
+- quiet: empty, or no `~/desktop`
+- normal: everything in it arrived this boot
+- attention: anything left over
+
+**Detail:** a group per kind, left over first, each headed by its count, with a row per entry: its name and when it arrived (its ctime, as a clock time). Oldest first within each group, then by name, so rows never swap places between readings. At most 12 rows in all, left over first since those are the ones to deal with; a group that does not fit ends `… and N more`. Names are cut to 40 characters (`…`), and control characters show as `?` so a name with a newline cannot split a row.
+
+```
+2 left over from before this boot
+  jellyfin-todo.md  2026-10-23 04:46
+  cookies.txt       2026-10-23 20:34
+1 dropped this boot
+  shot.png          02:45
+```
+
+Empty: `~/desktop is empty`; missing: `~/desktop does not exist`. Unknown, when the drawer or the boot time cannot be read, or the drawer cannot be watched: `Cannot measure: ` + why.
+
 ---
 
 ## Using Telltale from waybar
@@ -302,6 +333,8 @@ Telltale doesn't know about any of this; it's the waybar side of the contract.
 "custom/disk":  { "exec": "telltale-disk --watch --format waybar --floor attention",  "return-type": "json" },
 "custom/claude": { "exec": "telltale-claude --watch --format waybar --floor normal", "return-type": "json",
                    "on-click": "claude-focus" },
+"custom/desktop": { "exec": "telltale-desktop --watch --format waybar", "return-type": "json",
+                    "on-click": "xdg-open ~/desktop" },
 ```
 
 - **Shim:** add the manifest line `telltale-inbox  ~/.cargo/bin/telltale-inbox  PROTON_BRIDGE_IMAP_USER PROTON_BRIDGE_IMAP_PASS` and a `telltale-inbox` symlink in `shims/`. Secrets are decrypted once per waybar start instead of twice a minute. They live in the process environment for its lifetime, readable only by your own user: the same exposure as before, for longer.
@@ -324,4 +357,4 @@ Telltale doesn't know about any of this; it's the waybar side of the contract.
 - `inbox` does not get more urgent with age.
 - `mem` has no per-app breakdown.
 - Gauges always report; hiding is the floor, chosen by the display.
-- `claude`'s detail has no line saying how it keeps up (`Watching … (inotify)`) or when a check read: the sessions and their clock times are what matters there, and the line read as jargon. It is the one gauge whose detail does not say how fresh it is.
+- `claude`'s and `desktop`'s details have no line saying how they keep up (`Watching … (inotify)`) or when a check read: the rows and their clock times are what matters there, and the line read as jargon. They are the gauges whose detail does not say how fresh it is.

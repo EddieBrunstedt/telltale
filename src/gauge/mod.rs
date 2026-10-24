@@ -2,8 +2,10 @@
 
 pub mod claude;
 mod clock;
+pub mod desktop;
 pub mod disk;
 pub mod inbox;
+mod inotify;
 pub mod mem;
 pub mod net;
 mod pace;

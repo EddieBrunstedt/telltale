@@ -15,17 +15,16 @@
 //! what was appended since the last reading is read.
 
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Seek, SeekFrom};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
 use crate::gauge::Gauge;
 use crate::gauge::clock::clock;
+use crate::gauge::inotify;
 use crate::reading::{Level, Reading};
 use crate::run::{Extra, Given};
 
@@ -119,7 +118,7 @@ impl Claude {
                 return;
             }
         }
-        if fds[0].revents != 0 && !drain(inotify) {
+        if fds[0].revents != 0 && !inotify::drain(inotify) {
             // The directory went away; the watch went with it.
             self.inotify = None;
         }
@@ -399,16 +398,6 @@ fn read_sessions(dir: &Path, home: &str) -> Result<Vec<Session>, String> {
 }
 
 fn watch(dir: &Path) -> Result<OwnedFd, String> {
-    let failed = |e: io::Error| format!("{}: {e}", dir.display());
-    // SAFETY: inotify_init1 takes only flags; a non-negative result is a new
-    // fd that nothing else owns.
-    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
-    if fd < 0 {
-        return Err(failed(io::Error::last_os_error()));
-    }
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-    let path = CString::new(dir.as_os_str().as_bytes())
-        .map_err(|_| format!("{}: contains a NUL", dir.display()))?;
     // A new file is written in place and is still empty at IN_CREATE; it is
     // read on IN_CLOSE_WRITE instead.
     let mask = libc::IN_CLOSE_WRITE
@@ -416,40 +405,8 @@ fn watch(dir: &Path) -> Result<OwnedFd, String> {
         | libc::IN_MOVED_FROM
         | libc::IN_DELETE
         | libc::IN_DELETE_SELF
-        | libc::IN_MOVE_SELF
-        | libc::IN_ONLYDIR;
-    // SAFETY: fd is an inotify instance and path a valid C string.
-    if unsafe { libc::inotify_add_watch(fd.as_raw_fd(), path.as_ptr(), mask) } < 0 {
-        return Err(failed(io::Error::last_os_error()));
-    }
-    Ok(fd)
-}
-
-/// Reads every pending event. Which file changed does not matter, since
-/// every change means reading the directory again; what matters is whether
-/// the directory itself is still there, which this returns.
-fn drain(inotify: &OwnedFd) -> bool {
-    const GONE: u32 = libc::IN_DELETE_SELF | libc::IN_MOVE_SELF | libc::IN_IGNORED;
-    let mut buf = [0u8; 4096];
-    let mut there = true;
-    loop {
-        // SAFETY: buf is valid for writes of its full length.
-        let n = unsafe { libc::read(inotify.as_raw_fd(), buf.as_mut_ptr().cast(), buf.len()) };
-        if n <= 0 {
-            // EAGAIN: drained. Anything else: the next poll will say.
-            return there;
-        }
-        let mut at = 0;
-        let header = std::mem::size_of::<libc::inotify_event>();
-        while at + header <= n as usize {
-            // SAFETY: the kernel writes whole events; read_unaligned because
-            // a u8 buffer promises no alignment.
-            let event: libc::inotify_event =
-                unsafe { std::ptr::read_unaligned(buf[at..].as_ptr().cast()) };
-            there &= event.mask & GONE == 0;
-            at += header + event.len as usize;
-        }
-    }
+        | libc::IN_MOVE_SELF;
+    inotify::watch(dir, mask).map_err(|e| format!("{}: {e}", dir.display()))
 }
 
 fn pidfd_open(pid: i32) -> Option<OwnedFd> {

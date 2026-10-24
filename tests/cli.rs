@@ -4,12 +4,17 @@
 
 use std::process::Command;
 
-const GAUGES: &[(&str, &str)] = &[
-    (env!("CARGO_BIN_EXE_telltale-net"), "󰁅"),
-    (env!("CARGO_BIN_EXE_telltale-mem"), "󰍛"),
-    (env!("CARGO_BIN_EXE_telltale-disk"), "󰋊"),
-    (env!("CARGO_BIN_EXE_telltale-units"), "󰀦"),
-    (env!("CARGO_BIN_EXE_telltale-claude"), "󰚩"),
+/// Each gauge, and the glyphs its summary can start with.
+const GAUGES: &[(&str, &[&str])] = &[
+    (env!("CARGO_BIN_EXE_telltale-net"), &["󰁅"]),
+    (env!("CARGO_BIN_EXE_telltale-mem"), &["󰍛"]),
+    (env!("CARGO_BIN_EXE_telltale-disk"), &["󰋊"]),
+    (env!("CARGO_BIN_EXE_telltale-units"), &["󰀦"]),
+    (env!("CARGO_BIN_EXE_telltale-claude"), &["󰚩"]),
+    (
+        env!("CARGO_BIN_EXE_telltale-desktop"),
+        &["\u{f0687}", "\u{f1272}"],
+    ),
 ];
 
 fn run(exe: &str, args: &[&str]) -> (i32, String) {
@@ -22,7 +27,7 @@ fn run(exe: &str, args: &[&str]) -> (i32, String) {
 
 #[test]
 fn a_text_check_writes_level_and_summary_and_exits_with_that_level() {
-    for &(exe, glyph) in GAUGES {
+    for &(exe, glyphs) in GAUGES {
         let (status, out) = run(exe, &[]);
         let first = out.lines().next().unwrap_or_default();
         let (level, summary) = first.split_once(": ").expect("level: summary");
@@ -34,7 +39,10 @@ fn a_text_check_writes_level_and_summary_and_exits_with_that_level() {
             other => panic!("{exe}: unknown level {other:?}"),
         };
         assert_eq!(status, expected, "{exe}: {first:?}");
-        assert!(summary.starts_with(glyph), "{exe}: {first:?}");
+        assert!(
+            glyphs.iter().any(|g| summary.starts_with(g)),
+            "{exe}: {first:?}"
+        );
     }
 }
 
